@@ -1,0 +1,132 @@
+---
+title: "Coursera Practial Machine Learning project"
+author: "Steven Devisch"
+date: "April 30, 2016"
+output: html_document
+---
+
+## Introduction
+Using devices such as Jawbone Up, Nike FuelBand, and Fitbit it is now possible to collect a large amount of data about personal activity relatively inexpensively. 
+
+These type of devices are part of the quantified self movement - a group of enthusiasts who take measurements about themselves regularly to improve their health, to find patterns in their behavior, or because they are tech geeks. 
+
+One thing that people regularly do is quantify how much of a particular activity they do, but they rarely quantify how well they do it. 
+
+In this project, your goal will be to use data from accelerometers on the belt, forearm, arm, and dumbell of 6 participants.
+
+The goal of the project is to predict the manner in which participatns did the exercise. This is the "classe" variable in the training set. 
+
+We shall describe how we <BR>
+* built our model, 
+* how we performed cross validation,
+* what we think the expected out of sample error is, 
+* why we made specific choices, and
+* how we used our prediction model to predict 20 different test cases
+
+## Preparation
+```{r include=FALSE}
+knitr::opts_chunk$set(cache=TRUE)
+# set work dir
+setwd("C:/Users/ZEZ227/Desktop/Training/R/Coursera/Practical machine learning")
+
+# load libraries
+library(caret)
+library(randomForest)
+library(rpart)
+library(rpart.plot)
+library(ggplot2)
+library(lattice)
+library(rattle)
+```
+
+## Load train and test data sets and identify NA's
+
+```{r}
+trainUrl <- "http://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv"
+testUrl <- "http://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv"
+trainData <- read.csv(url(trainUrl), header=TRUE, sep=",", na.strings=c("NA","#DIV/0!",""))
+testData <- read.csv(url(testUrl), header=TRUE, sep=",", na.strings=c("NA","#DIV/0!",""))
+```
+
+## Data cleaning
+Summary information shows that both the test and validation data sets have the same columns. As such we can apply data cleaning steps to both data sets.<BR>
+
+We can reduce the number of columns from 160 to 53:  <BR>
+* remove the first meta-data-type seven columns as they do not include data about the exercises
+* remove columns with NAs
+* remove columns having only one value
+
+```{r include=FALSE}
+dim(trainData)
+str(trainData)
+dim(testData)
+str(testData)
+summary(trainData$classe)
+
+# removal of first 7 columns 
+trainData <- trainData[,-seq(1:7)]
+testData <- testData[,-seq(1:7)]
+
+# remove columns with NAs
+hasNA <- as.vector(sapply(trainData[,1:152],function(x) {length(which(is.na(x)))!=0}))
+trainData <- trainData[,!hasNA]
+testData <- testData[,!hasNA]
+
+# remove columns that have only one categorical value, and no model value
+trainData <- trainData[sapply(trainData, function(x) length(unique(x))>1)]
+testData <- testData[sapply(testData, function(x) length(unique(x))>1)]
+colnames(trainData)
+colnames(testData)
+```
+Note that the column "class" is not included in the test dataset as the feature classe is the purpose of the prediction effort.
+
+## Create training and testing data sets
+We will create a training and test dataset, and will apply two types of models: a tree model, and a random forest model.
+```{r include=FALSE}
+# split dataset into training and test set
+partition <- createDataPartition(y=trainData$classe, p=0.7, list=FALSE )
+trainDSS <- trainData[partition,]
+testDSS <- trainData[-partition,]
+```
+
+## Model 1: tree model with rPart
+
+```{r}
+# set seed for reproducibility
+set.seed(12345)
+rpart1 <-train(classe~.,method="rpart", data=trainDSS)
+print(rpart1$finalModel)
+fancyRpartPlot(rpart1$finalModel,cex=.5,under.cex=1,shadow.offset=0)
+```
+
+```{r include=FALSE}
+classepredict= predict(rpart1,testDSS)
+confusionMatrix(testDSS$classe,classepredict)
+```
+At ~55% accuracy, the model is not very good.
+We'll try random forests next. 
+
+## Model 2: random forests
+### Model build
+```{r}
+# set seed for reproducibility
+forestTrainFit <- randomForest(classe ~ ., data=trainDSS)
+testPredict <- predict(forestTrainFit, testDSS, type = "class")
+confusionForest <- confusionMatrix(testPredict, testDSS$classe)
+confusionForest
+plot(forestTrainFit)
+```
+
+We cross validated the model with our hold-out data subset.
+Random Forests gave an Accuracy in the testing data subset of 99.61%, which was significantly more accurate than with Decision Trees. 
+The expected out-of-sample error is 100-99.61 = 0.39%.
+
+### Applying the prediction model to predict 20 different test cases
+We shal proceed to predict the class variable for the test dataset.
+```{r}
+testDataPredict <- predict(forestTrainFit, testData)
+testDataPredict
+```
+
+## Conclusion
+The random forest model performed significantly better than the tree model.
